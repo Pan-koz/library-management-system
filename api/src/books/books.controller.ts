@@ -35,10 +35,14 @@ export class BooksController {
   findAll(
     @Query('genreId') genreId?: string,
     @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.booksService.findAll(
       genreId ? Number(genreId) : undefined,
       search,
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 10,
     );
   }
 

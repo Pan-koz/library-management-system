@@ -1,3 +1,4 @@
+
 import {
   BadRequestException,
   ConflictException,
@@ -24,22 +25,68 @@ export class BooksService {
     }
   }
 
-  async findAll(genreId?: number, search?: string) {
-    return this.prisma.book.findMany({
-      where: {
-        ...(genreId ? { genreId } : {}),
-        ...(search
-          ? {
-              OR: [
-                { title: { contains: search, mode: 'insensitive' } },
-                { author: { contains: search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
+  async findAll(
+    genreId?: number,
+    search?: string,
+    page = 1,
+    limit = 10,
+  ) {
+    if (
+      !Number.isInteger(page) ||
+      !Number.isInteger(limit) ||
+      page < 1 ||
+      limit < 1 ||
+      limit > 100
+    ) {
+      throw new BadRequestException(
+        'Page must be at least 1 and limit must be between 1 and 100.',
+      );
+    }
+
+    const skip = (page - 1) * limit;
+
+    const where = {
+      ...(genreId !== undefined ? { genreId } : {}),
+      ...(search
+        ? {
+            OR: [
+              {
+                title: {
+                  contains: search,
+                  mode: 'insensitive' as const,
+                },
+              },
+              {
+                author: {
+                  contains: search,
+                  mode: 'insensitive' as const,
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const [books, total] = await Promise.all([
+      this.prisma.book.findMany({
+        where,
+        include: { genre: true },
+        orderBy: { title: 'asc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.book.count({ where }),
+    ]);
+
+    return {
+      data: books,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
       },
-      include: { genre: true },
-      orderBy: { title: 'asc' },
-    });
+    };
   }
 
   async findOne(id: number) {
@@ -81,11 +128,15 @@ export class BooksService {
     const code = (error as { code?: string })?.code;
 
     if (code === 'P2002') {
-      throw new ConflictException('A book with this ISBN already exists.');
+      throw new ConflictException(
+        'A book with this ISBN already exists.',
+      );
     }
 
     if (code === 'P2003') {
-      throw new BadRequestException('The supplied genre ID is invalid.');
+      throw new BadRequestException(
+        'The supplied genre ID is invalid.',
+      );
     }
 
     throw error;
